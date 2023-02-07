@@ -31,6 +31,11 @@
       file:
         path: "{{ data_dir }}"
         state: directory
+    - name: Setting SELinux context
+      sefcontext:
+        setype: httpd_var_run_t
+        target: "{{ data_dir }}/nginx.sock"
+      become: true
     - name: Create podman network
       containers.podman.podman_network:
         name: patchew
@@ -38,6 +43,9 @@
     - import_tasks: tasks/podman-deploy.yml
       vars:
         instance_role: server
+    - name: Apply new SELinux file context to filesystem
+      command: "restorecon -v {{ data_dir }}/nginx.sock"
+      become: true
     - name: Create superuser
       when: superuser_name != ""
       shell: |
