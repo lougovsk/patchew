@@ -23,9 +23,7 @@ import schema
 
 
 _default_config = """
-[default]
-queues = accept,reject
-
+[collaborative]
 """
 
 
@@ -37,20 +35,25 @@ Documentation
 
 This module is configured in "INI" style.
 
-It has only one section named `[default]`. The only supported option is queue regexs. 
+It has only one section named `[collaborative]`. The only supported option is queue regexs. 
 Listed queue names will be shared among all maintainers in the project:
 
-    [default]
-    queues = accept,reject
+    [collaborative]
 """
 
     name = "collaborative"
 
-    tag_schema = schema.ArraySchema(
-        "tag_config",
-        "Tag Config",
-        desc="Configuration for the tagging in GUI",
+    queue_schema = schema.ArraySchema(
+        "{name}",
+        "Queue Config",
+        desc="Configurtaion for individual queue regex",
         members=[
+            schema.StringSchema(
+                "regex",
+                "RegEx",
+                desc="RegEx for the queue",
+                required=True,
+            ),
             schema.StringSchema(
                 "title",
                 "Title",
@@ -69,54 +72,43 @@ Listed queue names will be shared among all maintainers in the project:
                 desc="Type of the tag (success, failure)",
                 required=True,
             ),
-            schema.BooleanSchema(
+            schema.IntegerSchema(
                 "group",
-                "Group",
-                desc="Group index",
+                "Group Index",
+                desc="Group index in the regex",
                 required=False,
                 default=0,
-            ),
-        ]
-    )
-    queue_schema = schema.ArraySchema(
-        "queue_config",
-        "Queue Config",
-        desc="Configurtaion for individual queue regex",
-        members=[
-            schema.StringSchema(
-                "regex",
-                "RegEx",
-                desc="RegEx for the queue",
-                required=True,
-            ),
-            tag_schema
+            )
         ],
     )
     project_config_schema = schema.ArraySchema(
-        name,
+        "collaborative",
         desc="Configuration for collaborative module",
         members=[
-            schema.ArraySchema(
-                "queues", "Queues", desc="List of regexs for collaborative queues", required=True, members = [queue_schema]
-            ),
+            schema.MapSchema(
+                "queues", 
+                "Collaborative configuration", 
+                desc="List of regexs for collaborative queues", 
+                item = queue_schema,
+            )
         ],
     )
 
-    default_config = _default_config
+  #  default_config = _default_config
 
     def __init__(self):
         register_handler("MessageQueued", self.on_message_queued)
         register_handler("MessageDropped", self.on_message_dropped)
         
- 
-    def _is_special_queue(self, name, project):
-        regexs = [i["regex"] for i in self.get_project_config(project)["queues"]]
+    def _get_queues(self, project):
+        return list(self.get_project_config(project).get("queues", {}).values())
+
+    def _is_special_queue(self, name, project):       
+        regexs = [i["regex"] for i in self._get_queues(project)]
         combined_regex = "(" + ")|(".join(regexs) + ")"
         return re.match(combined_regex, name)
 
     def on_message_queued(self, event, user, message, queue):
-
-
         if self._is_special_queue(queue.name, message.project) and user in message.project.maintainers.all():
             for mainainer in message.project.maintainers.all():
                 if mainainer != user:
@@ -153,19 +145,19 @@ Listed queue names will be shared among all maintainers in the project:
             prio = 0        
             for r in queues:
                 if self._is_special_queue(r.name, message.project):
-                    for q in self.get_project_config(message.project)["queues"]:
+                    for q in self._get_queues(message.project):
                         match = re.match(q['regex'], r.name)
-                        group = q['tag_config'].get('group', 0)
+                        group = q.get('group', 0)
                         if match:
-                            title = q['tag_config']['title']
+                            title = q['title']
                             if '%s' in title:
                                 title = title % match.group(group)
-                            char = q['tag_config']['char']
+                            char = q['char']
                             if '%s' in char:
                                 char = char % match.group(group)
                             tag={
                                     "title": title ,
-                                    "type": q['tag_config']['type'],
+                                    "type": q['type'],
                                     "char": char
                                 }
                             prio = 2
