@@ -25,8 +25,34 @@ class CollaborativeTest(PatchewTestCase):
         self.p.maintainers.add(self.testuser2)
         self.p.maintainers.add(self.testuser3)
         self.p.config = {
-            "collaborative": {
-                "queues": ["accept", "reject", "RHEL-\d+\.\d+"]
+            "collaborative":{
+                "queues": [
+                    {
+                        "regex":"accept",
+                        "tag_config":{
+                            "title": "Will be backported in the future release",
+                            "char" : "A",
+                            "type" : "success"
+                        }
+                    },
+                    {
+                        "regex":"reject",
+                        "tag_config":{
+                            "title": "Won't be backported in the future release",
+                            "char" : "D",
+                            "type" : "failure"
+                        }
+                    },
+                    {
+                        "regex":"RHEL-(\d+\.\d+)",
+                        "tag_config":{
+                            "title": "Will be backported in the %s release",
+                            "char" : "%s",
+                            "type" : "success",
+                            "group": 1
+                        }
+                    }
+                ]
             }
         }
         self.p.save()

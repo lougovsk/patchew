@@ -45,12 +45,59 @@ Listed queue names will be shared among all maintainers in the project:
 """
 
     name = "collaborative"
+
+    tag_schema = schema.ArraySchema(
+        "tag_config",
+        "Tag Config",
+        desc="Configuration for the tagging in GUI",
+        members=[
+            schema.StringSchema(
+                "title",
+                "Title",
+                desc="Title to display",
+                required=True,
+            ),
+            schema.StringSchema(
+                "char",
+                "Char",
+                desc="Which character will be used for tagging",
+                required=True,
+            ),
+            schema.StringSchema(
+                "type",
+                "Type",
+                desc="Type of the tag (success, failure)",
+                required=True,
+            ),
+            schema.BooleanSchema(
+                "group",
+                "Group",
+                desc="Group index",
+                required=False,
+                default=0,
+            ),
+        ]
+    )
+    queue_schema = schema.ArraySchema(
+        "queue_config",
+        "Queue Config",
+        desc="Configurtaion for individual queue regex",
+        members=[
+            schema.StringSchema(
+                "regex",
+                "RegEx",
+                desc="RegEx for the queue",
+                required=True,
+            ),
+            tag_schema
+        ],
+    )
     project_config_schema = schema.ArraySchema(
         name,
         desc="Configuration for collaborative module",
         members=[
             schema.ArraySchema(
-                "queues", "Queues", desc="List of regexs for collaborative queues", required=True, members = [schema.StringSchema]
+                "queues", "Queues", desc="List of regexs for collaborative queues", required=True, members = [queue_schema]
             ),
         ],
     )
@@ -63,11 +110,13 @@ Listed queue names will be shared among all maintainers in the project:
         
  
     def _is_special_queue(self, name, project):
-        regexs = self.get_project_config(project)["queues"]
+        regexs = [i["regex"] for i in self.get_project_config(project)["queues"]]
         combined_regex = "(" + ")|(".join(regexs) + ")"
         return re.match(combined_regex, name)
 
     def on_message_queued(self, event, user, message, queue):
+
+
         if self._is_special_queue(queue.name, message.project) and user in message.project.maintainers.all():
             for mainainer in message.project.maintainers.all():
                 if mainainer != user:
@@ -103,22 +152,23 @@ Listed queue names will be shared among all maintainers in the project:
             tag = {}
             prio = 0        
             for r in queues:
-                if r.name == "accept":
-                    if prio < 2:
-                        tag={
-                                "title": "Will be backported in the future release",
-                                "type": "success",
-                                "char": "A"
-                            }
-                        prio = 2
-                elif r.name == "reject":
-                    if prio < 2:
-                        tag={
-                                "title": "Won't be backported in the future release",
-                                "type": "failure",
-                                "char": "D"
-                            }
-                        prio = 2
+                if self._is_special_queue(r.name, message.project):
+                    for q in self.get_project_config(message.project)["queues"]:
+                        match = re.match(q['regex'], r.name)
+                        group = q['tag_config'].get('group', 0)
+                        if match:
+                            title = q['tag_config']['title']
+                            if '%s' in title:
+                                title = title % match.group(group)
+                            char = q['tag_config']['char']
+                            if '%s' in char:
+                                char = char % match.group(group)
+                            tag={
+                                    "title": title ,
+                                    "type": q['tag_config']['type'],
+                                    "char": char
+                                }
+                            prio = 2
                 elif r.name != "watched":
                     if prio < 1:
                         tag={
@@ -139,3 +189,14 @@ Listed queue names will be shared among all maintainers in the project:
                 message.status_tags.append(tag)
             if status:
                 message.extra_status.append(status)
+
+    def prepare_project_hook(self, request, project):
+        if not project.maintained_by(request.user):
+            return
+        project.extra_info.append(
+            {
+                "title": "Collaborative configuration",
+                "class": "info",
+                "content_html": self.build_config_html(request, project),
+            }
+        )
