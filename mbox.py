@@ -275,7 +275,7 @@ class MboxMessage:
     def is_patch(self):
         """Return true if the email body is a patch"""
         body = self.get_body()
-        if self.get_subject().startswith("Re:"):
+        if bool(re.match('^re:', self.get_subject(), re.I)):
             return False
         return (
             self._has_lines(body, "---", "diff ", "index ", "---", "+++", "@@")
@@ -288,7 +288,7 @@ class MboxMessage:
     def is_series_head(self):
         """Create and return a Series from Message if it is one, otherwise
         return None"""
-        if self.get_subject().startswith("Re:"):
+        if bool(re.match('^re:', self.get_subject(), re.I)):
             return False
         c, t = self.get_num()
         if (c, t) == (None, None) and self.is_patch():
