@@ -131,7 +131,7 @@ Listed queue names will be shared among all maintainers in the project:
     def prepare_message_hook(self, request, message, for_message_view):
 
         queues = QueuedSeries.objects.filter(message=message)
-        if queues.count() == 0:
+        if queues.count() == 0 and message.is_obsolete == False:
             message.status_tags.append(
                 {
                     "title": "Neiter tracked or accepted",
